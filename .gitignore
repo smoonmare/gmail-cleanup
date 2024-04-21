@@ -1,0 +1,13 @@
+# Ignore the virtual environment folder
+venv/
+env/
+
+# Ignore personal credentials file
+credentials.json
+
+# Ignore Python bytecode
+__pycache__/
+*.pyc
+
+# MacOS system files
+.DS_Store
