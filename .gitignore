@@ -4,6 +4,7 @@ env/
 
 # Ignore personal credentials file
 credentials.json
+token.json
 
 # Ignore Python bytecode
 __pycache__/
