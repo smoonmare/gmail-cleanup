@@ -1,23 +1,34 @@
 import os.path
-import base64
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+import concurrent.futures
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+
+def process_message_data(message_data):
+    # Extract and process the sender information from the message payload
+    msg_headers = message_data.get('payload', {}).get('headers', [])
+    sender = next((header['value'] for header in msg_headers if header['name'] == 'From'), None)
+    return sender
 
 def get_sender_info(service, user_id, max_results=1000):
     print("Fetching messages from the inbox...")
 
     senders = {}
     page_token = None
-    message_count = 0
+    messages_processed = 0
 
-    while message_count < max_results:
+    while messages_processed < max_results:
+        # Adjust maxResults if we're nearing the max_results limit
+        current_max_results = min(100, max_results - messages_processed)
+
         # Fetch messages from the user's inbox with page token
-        results = service.users().messages().list(userId=user_id, labelIds=['INBOX'], pageToken=page_token, maxResults=100).execute()
+        results = service.users().messages().list(
+            userId=user_id, labelIds=['INBOX'],
+            pageToken=page_token, maxResults=current_max_results).execute()
         messages = results.get('messages', [])
         page_token = results.get('nextPageToken')
 
@@ -25,33 +36,27 @@ def get_sender_info(service, user_id, max_results=1000):
             print("No more messages found.")
             break
 
-        print(f"Processing batch of {len(messages)} messages... might take a while")
-        for message in messages:
-            msg = service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute()
-            msg_headers = msg.get('payload', {}).get('headers', [])
-            sender = next(header['value'] for header in msg_headers if header['name'] == 'From')
-            senders[sender] = senders.get(sender, 0) + 1
-            message_count += 1
+        # Fetch all message details
+        message_data_list = [service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute() for message in messages]
 
-            if message_count >= max_results:
-                break
+        # Use ThreadPoolExecutor to process the data concurrently
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            for sender in executor.map(process_message_data, message_data_list):
+                if sender:
+                    senders[sender] = senders.get(sender, 0) + 1
 
-        if not page_token:
-            print("No more messages to process.")
+        messages_processed += len(messages)
+        if not page_token or messages_processed >= max_results:
+            print("No more messages to process or reached max_results limit.")
             break
 
     print("Finished processing messages.")
     return senders
 
-
 def main():
     creds = None
-    # The file token.json stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-    # If there are no (valid) credentials available, let the user log in.
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
@@ -59,15 +64,14 @@ def main():
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
             creds = flow.run_local_server(port=0)
-        # Save the credentials for the next run
         with open('token.json', 'w') as token:
             token.write(creds.to_json())
 
     service = build('gmail', 'v1', credentials=creds)
-    
+
     # Collect all sender information
     senders = get_sender_info(service, 'me', max_results=1000)
-    
+
     # Print sender information
     for sender, count in senders.items():
         print(f"Sender: {sender}, Messages: {count}")
