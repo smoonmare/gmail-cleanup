@@ -8,27 +8,41 @@ from googleapiclient.discovery import build
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
-def get_sender_info(service, user_id):
+def get_sender_info(service, user_id, max_results=1000):
     print("Fetching messages from the inbox...")
-    # Fetch messages from the user's inbox
-    results = service.users().messages().list(userId=user_id, labelIds=['INBOX']).execute()
-    messages = results.get('messages', [])
-    senders = {}
 
-    if messages:
-        total_messages = len(messages)
-        print(f"Processing {total_messages} messages...")
+    senders = {}
+    page_token = None
+    message_count = 0
+
+    while message_count < max_results:
+        # Fetch messages from the user's inbox with page token
+        results = service.users().messages().list(userId=user_id, labelIds=['INBOX'], pageToken=page_token, maxResults=100).execute()
+        messages = results.get('messages', [])
+        page_token = results.get('nextPageToken')
+
+        if not messages:
+            print("No more messages found.")
+            break
+
+        print(f"Processing batch of {len(messages)} messages... might take a while")
         for message in messages:
             msg = service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute()
             msg_headers = msg.get('payload', {}).get('headers', [])
             sender = next(header['value'] for header in msg_headers if header['name'] == 'From')
-            if sender in senders:
-                senders[sender] += 1
-            else:
-                senders[sender] = 1
+            senders[sender] = senders.get(sender, 0) + 1
+            message_count += 1
+
+            if message_count >= max_results:
+                break
+
+        if not page_token:
+            print("No more messages to process.")
+            break
 
     print("Finished processing messages.")
     return senders
+
 
 def main():
     creds = None
@@ -52,7 +66,7 @@ def main():
     service = build('gmail', 'v1', credentials=creds)
     
     # Collect all sender information
-    senders = get_sender_info(service, 'me')
+    senders = get_sender_info(service, 'me', max_results=1000)
     
     # Print sender information
     for sender, count in senders.items():
