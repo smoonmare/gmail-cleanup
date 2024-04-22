@@ -9,12 +9,15 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 def get_sender_info(service, user_id):
+    print("Fetching messages from the inbox...")
     # Fetch messages from the user's inbox
     results = service.users().messages().list(userId=user_id, labelIds=['INBOX']).execute()
     messages = results.get('messages', [])
     senders = {}
 
     if messages:
+        total_messages = len(messages)
+        print(f"Processing {total_messages} messages...")
         for message in messages:
             msg = service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute()
             msg_headers = msg.get('payload', {}).get('headers', [])
@@ -24,6 +27,7 @@ def get_sender_info(service, user_id):
             else:
                 senders[sender] = 1
 
+    print("Finished processing messages.")
     return senders
 
 def main():
