@@ -24,4 +24,4 @@ def filter_noreply_emails(input_filename, output_filename):
 
 # Makes it executable directly in terminal for testing
 if __name__ == "__main__":
-    filter_noreply_emails('senders_data.json', 'noreply_senders.json')
+    filter_noreply_emails('data/senders_data.json', 'data/noreply_senders.json')
