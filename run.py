@@ -1,4 +1,7 @@
 import os.path
+import time
+import random
+import json
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -8,47 +11,67 @@ import concurrent.futures
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
+def exponential_backoff(n):
+    """Calculate sleep time in seconds for exponential backoff."""
+    return (2 ** n) + random.uniform(0, 1)
+
 def process_message_data(message_data):
     # Extract and process the sender information from the message payload
     msg_headers = message_data.get('payload', {}).get('headers', [])
     sender = next((header['value'] for header in msg_headers if header['name'] == 'From'), None)
     return sender
 
-def get_sender_info(service, user_id, max_results=1000):
+def get_sender_info(service, user_id):
     print("Fetching messages from the inbox...")
-
     senders = {}
     page_token = None
-    messages_processed = 0
+    attempt = 0
 
-    while messages_processed < max_results:
-        # Adjust maxResults if we're nearing the max_results limit
-        current_max_results = min(100, max_results - messages_processed)
+    while True:
+        try:
+            results = service.users().messages().list(userId=user_id, labelIds=['INBOX'],
+                                                      pageToken=page_token, maxResults=500).execute()
+            messages = results.get('messages', [])
+            page_token = results.get('nextPageToken')
 
-        # Fetch messages from the user's inbox with page token
-        results = service.users().messages().list(
-            userId=user_id, labelIds=['INBOX'],
-            pageToken=page_token, maxResults=current_max_results).execute()
-        messages = results.get('messages', [])
-        page_token = results.get('nextPageToken')
+            if not messages:
+                print("No more messages found.")
+                break
 
-        if not messages:
-            print("No more messages found.")
+            print(f"Processing batch of {len(messages)} messages...")
+
+            for i, message in enumerate(messages):
+                print(f"\rCurrent message: {i + 1}/{len(messages)}", end='', flush=True)
+                full_message = service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute()
+                payload = full_message.get('payload')
+                if payload:
+                    headers = payload.get('headers', [])
+                    sender = next((header['value'] for header in headers if header['name'].lower() == 'from'), None)
+                    if sender:
+                        senders[sender] = senders.get(sender, 0) + 1
+                else:
+                    print("No payload available for message ID:", message['id'])
+
+            # Reset attempt counter after a successful batch
+            attempt = 0
+
+        except Exception as error:
+            print(f"An error occurred: {error}")
+            attempt += 1
+            sleep_time = exponential_backoff(attempt)
+            print(f"Retrying in {sleep_time:.2f} seconds...")
+            time.sleep(sleep_time)
+            if attempt > 5:  # Limit the number of retries to prevent infinite loops
+                print("Maximum retry attempts reached, stopping...")
+                break
+
+        if not page_token:
+            print("No more messages to process.")
             break
 
-        # Fetch all message details
-        message_data_list = [service.users().messages().get(userId=user_id, id=message['id'], format='metadata', metadataHeaders=['From']).execute() for message in messages]
-
-        # Use ThreadPoolExecutor to process the data concurrently
-        with concurrent.futures.ThreadPoolExecutor() as executor:
-            for sender in executor.map(process_message_data, message_data_list):
-                if sender:
-                    senders[sender] = senders.get(sender, 0) + 1
-
-        messages_processed += len(messages)
-        if not page_token or messages_processed >= max_results:
-            print("No more messages to process or reached max_results limit.")
-            break
+        # Save intermediate results after processing each batch
+        with open('senders_data_partial.json', 'w') as f:
+            json.dump(senders, f, indent=2)
 
     print("Finished processing messages.")
     return senders
@@ -70,11 +93,13 @@ def main():
     service = build('gmail', 'v1', credentials=creds)
 
     # Collect all sender information
-    senders = get_sender_info(service, 'me', max_results=1000)
+    senders = get_sender_info(service, 'me')  # Removed the max_results parameter
 
-    # Print sender information
-    for sender, count in senders.items():
-        print(f"Sender: {sender}, Messages: {count}")
+    # Save sender information to a JSON file
+    with open('senders_data.json', 'w') as f:
+        json.dump(senders, f, indent=2)
+
+    print("Sender information has been saved to senders_data.json")
 
 if __name__ == '__main__':
     main()
