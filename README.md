@@ -16,16 +16,20 @@ It is recommended to use a Python virtual environment for running this project. 
     cd gmail-cleanup
 
 2. Set up a virtual environment:
+    ```bash
     python3 -m venv venv
 
 3. Activate the virtual environment:
+    ```bash
     source venv/bin/activate  # On Windows use `venv\Scripts\activate`
 
 4. Install the dependencies:
+    ```bash
     pip install -r requirements.txt
 
 ## Usage
 To use 'gmail-cleanup', run the following command:
+    ```bash
     python run.py
 
 ### Contributing
