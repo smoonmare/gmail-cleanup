@@ -7,6 +7,7 @@ from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 import concurrent.futures
+import data_processor
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
@@ -35,10 +36,10 @@ def get_sender_info(service, user_id):
             page_token = results.get('nextPageToken')
 
             if not messages:
-                print("No more messages found.")
+                print("\nNo more messages found.")
                 break
 
-            print(f"Processing batch of {len(messages)} messages...")
+            print(f"\nProcessing batch of {len(messages)} messages...")
 
             for i, message in enumerate(messages):
                 print(f"\rCurrent message: {i + 1}/{len(messages)}", end='', flush=True)
@@ -59,24 +60,33 @@ def get_sender_info(service, user_id):
             print(f"An error occurred: {error}")
             attempt += 1
             sleep_time = exponential_backoff(attempt)
-            print(f"Retrying in {sleep_time:.2f} seconds...")
+            print(f"\nRetrying in {sleep_time:.2f} seconds...")
             time.sleep(sleep_time)
             if attempt > 5:  # Limit the number of retries to prevent infinite loops
-                print("Maximum retry attempts reached, stopping...")
+                print("\nMaximum retry attempts reached, stopping...")
                 break
 
         if not page_token:
-            print("No more messages to process.")
+            print("\nNo more messages to process.")
             break
 
         # Save intermediate results after processing each batch
         with open('senders_data_partial.json', 'w') as f:
             json.dump(senders, f, indent=2)
 
-    print("Finished processing messages.")
+    print("\nFinished processing messages.")
     return senders
 
 def main():
+    if os.path.exists('senders_data.json'):
+        with open('senders_data.json', 'r') as file:
+            data = json.load(file)
+            if data:  # Check if the data is not empty
+                print("Local data found. Processing...")
+                data_processor.filter_noreply_emails('senders_data.json', 'noreply_senders.json')
+                return
+
+    print("No local data found or file is empty. Fetching data...")
     creds = None
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
@@ -93,13 +103,14 @@ def main():
     service = build('gmail', 'v1', credentials=creds)
 
     # Collect all sender information
-    senders = get_sender_info(service, 'me')  # Removed the max_results parameter
+    senders = get_sender_info(service, 'me')
 
     # Save sender information to a JSON file
     with open('senders_data.json', 'w') as f:
         json.dump(senders, f, indent=2)
 
-    print("Sender information has been saved to senders_data.json")
+    print("\nSender information has been saved to senders_data.json")
+    data_processor.filter_noreply_emails('senders_data.json', 'noreply_senders.json')
 
 if __name__ == '__main__':
     main()

@@ -9,6 +9,7 @@ token.json
 # Ignore Datasets
 senders_data_partial.json
 senders_data.json
+noreply_senders.json
 
 # Ignore Python bytecode
 __pycache__/
