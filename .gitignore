@@ -3,13 +3,10 @@ venv/
 env/
 
 # Ignore personal credentials file
-credentials.json
-token.json
+auth/
 
 # Ignore Datasets
-senders_data_partial.json
-senders_data.json
-noreply_senders.json
+data/
 
 # Ignore Python bytecode
 __pycache__/

@@ -36,7 +36,7 @@ To use 'gmail-cleanup', run the following command:
 Contributions to gmail-cleanup are welcome! Please feel free to fork the repository and submit pull requests.
 
 ### License
-This project is released under the [INSERT LICENSE HERE] License. For more details, see the LICENSE file in the repository.
+This project is released under the MIT License. For more details, see the LICENSE file in the repository.
 
 ### Contact
 If you have any questions or feedback, please open an issue in the GitHub repository for this project.

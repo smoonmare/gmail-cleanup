@@ -1,6 +1,8 @@
+import time
 import os
 import json
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 def exponential_backoff(n):
     import random
@@ -61,3 +63,33 @@ def get_sender_info(service, user_id):
 
     print("\nFinished processing messages.")
     return senders
+
+def delete_emails_from_senders(service, user_id, sender_file):
+    """Deletes all emails from senders listed in the specified file."""
+    # Load sender data from JSON file
+    with open(sender_file, 'r') as file:
+        senders = json.load(file).keys()
+
+    for sender in senders:
+        try:
+            # Initialize for pagination
+            page_token = None
+            while True:
+                response = service.users().messages().list(userId=user_id, q=f'from:{sender}', pageToken=page_token).execute()
+                messages = response.get('messages', [])
+                page_token = response.get('nextPageToken')
+
+                # Iterate through messages and delete them
+                for msg in messages:
+                    try:
+                        service.users().messages().delete(userId=user_id, id=msg['id']).execute()
+                    except HttpError as error:
+                        print(f"Failed to delete message {msg['id']} from {sender}: {error}")
+
+                if not page_token:
+                    break
+
+            print(f"Deleted all messages from {sender}.")
+        except HttpError as error:
+            print(f"Failed to delete messages from {sender}: {error}")
+            time.sleep(5)  # Simple backoff
